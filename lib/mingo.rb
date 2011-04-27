@@ -6,6 +6,7 @@ require 'hashie/dash'
 require 'thread'
 require 'socket'
 require 'digest/md5'
+require 'validatable'
 
 BSON::ObjectId.class_eval do
   def self.[](id)
@@ -40,6 +41,8 @@ class Mingo < Hashie::Dash
   # ActiveModel::Callbacks
   include ActiveModel::Conversion
   extend ActiveModel::Translation
+
+  include Validatable
   
   autoload :Cursor, 'mingo/cursor'
   autoload :ManyProxy, 'mingo/many_proxy'
@@ -156,12 +159,14 @@ class Mingo < Hashie::Dash
   end
 
   def save(options = {})
-    if persisted?
-      update(values_for_update, options)
-    else
-      self['_id'] = self.class.collection.insert(self.to_hash, options)
-    end.
-      tap { changes.clear }
+    if valid?
+      if persisted?
+        update(values_for_update, options)
+      else
+        self['_id'] = self.class.collection.insert(self.to_hash, options)
+      end.
+        tap { changes.clear }
+    end
   end
   
   def update(doc, options = {})
@@ -223,6 +228,60 @@ if $0 == __FILE__
   class User < Mingo
     property :name
     property :age
+  end
+
+  class ValidatableUser < Mingo
+    property :name
+    property :age
+
+    validates_presence_of :name
+    validates_numericality_of :age
+    validates_inclusion_of :age, :within => (18..110)
+  end
+
+  describe ValidatableUser do
+    before :all do
+      ValidatableUser.collection.remove
+    end
+
+    it "should not save if it is invalid" do
+      doc = build :name => "Justin", :age => 10
+      doc.should_not be_persisted
+      doc.id.should be_nil
+
+      doc.save
+
+      doc.should_not be_persisted
+      doc.id.should be_nil
+    end
+
+    it "should tell if it is valid or not" do
+      doc = build :name => "Justin", :age => 10
+      doc.should_not be_valid
+
+      doc.age = 20
+      doc.should be_valid
+    end
+
+    it "should be able to tell what was wrong with the object" do
+      doc = build :name => "Justin", :age => 10
+      doc.should_not be_valid
+
+      doc.errors[:age].should be_a(Array)
+      doc.errors[:age].first  == "is not in the list"
+    end
+
+    def build(*args)
+      described_class.new(*args)
+    end
+
+    def create(*args)
+      described_class.create(*args)
+    end
+
+    def raw_doc(selector)
+      described_class.first(selector, :convert => nil)
+    end
   end
   
   describe User do

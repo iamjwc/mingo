@@ -6,3 +6,5 @@ gem 'mongo_ext'
 gem 'bson_ext'
 gem 'hashie', '< 1.0'
 gem 'rspec', '~> 2.0.0.beta.20'
+
+gem 'jnunemaker-validatable'
